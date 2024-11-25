@@ -554,7 +554,7 @@ class GaussianDiffusion:
         loss_fct = th.nn.CrossEntropyLoss(reduction='none')
         decoder_nll = loss_fct(logits.view(-1, logits.size(-1)), input_ids.view(-1)).view(input_ids.shape)
         if mask != None:
-            decoder_nll *= mask
+            decoder_nll *= mask # 去掉mask部分的token loss
         # print(decoder_nll.shape)
         if mask != None:
             decoder_nll = decoder_nll.sum(dim=-1)/mask.sum(dim=-1)
@@ -564,7 +564,7 @@ class GaussianDiffusion:
         return decoder_nll
 
     def _x0_helper(self, model_output, x, t):
-
+        # 两种，一种预测x本身，一种预测error
         if self.predict_xstart:
             pred_xstart = model_output
             pred_prev, _, _ = self.q_posterior_mean_variance(
@@ -611,25 +611,25 @@ class GaussianDiffusion:
 
         x_t = self.q_sample(x_start, t, noise=noise, mask=input_ids_mask) # reparametrization trick.
 
-        get_logits = model.model.module.get_logits
+        get_logits = model.model.module.get_logits # 似乎是一个函数
 
         terms = {}
 
         target = x_start
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
         assert model_output.shape == target.shape == x_start.shape
-        terms["mse"] = mean_flat((target - model_output) ** 2)
+        terms["mse"] = mean_flat((target - model_output) ** 2) # 正常的mse损失
 
-        model_out_x_start = self._x0_helper(model_output, x_t, t)['pred_xstart'] # predicted_xstart = model_output
+        model_out_x_start = self._x0_helper(model_output, x_t, t)['pred_xstart'] # predicted_xstart = model_output，是不是算token loss?
         t0_mask = (t == 0)
         t0_loss = mean_flat((x_start_mean - model_out_x_start) ** 2)
-        terms["mse"] = th.where(t0_mask, t0_loss, terms["mse"])
+        terms["mse"] = th.where(t0_mask, t0_loss, terms["mse"]) # 这里是别的用mse，mask掉的部分用token loss
 
         # tT_mask = (t == self.num_timesteps - 1)
-        out_mean, _, _ = self.q_mean_variance(x_start, th.LongTensor([self.num_timesteps - 1]).to(x_start.device))
+        out_mean, _, _ = self.q_mean_variance(x_start, th.LongTensor([self.num_timesteps - 1]).to(x_start.device)) # 除了最后一步，每一步都要接近
         tT_loss =  mean_flat(out_mean ** 2)
 
-        decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x) # embedding regularization
+        decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x) # embedding regularization， 最后的embedding映射关系
         terms["nll"] = self._token_discrete_loss(model_out_x_start, get_logits, input_ids_x, mask=input_ids_mask, truncate=True, t=t) # x_0->model_out_x_start
         # assert (model.lm_head.weight == model.word_embedding.weight).all()
 
