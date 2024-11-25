@@ -262,6 +262,7 @@ class GaussianDiffusion:
         """
         Compute the mean and variance of the diffusion posterior: 
             q(x_{t-1} | x_t, x_0)
+            https://sunlin-ai.github.io/2022/05/30/guided-diffusion.html
 
         """
         assert x_start.shape == x_t.shape
