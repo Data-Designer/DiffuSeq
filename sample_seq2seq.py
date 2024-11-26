@@ -183,13 +183,13 @@ def main():
 
         # print(samples[0].shape) # samples for each step
 
-        sample = samples[-1]
+        sample = samples[-1] # xn-》重新采样回x0
 
         # print('decoding for seq2seq', )
         # print(sample.shape)
 
         logits = model.get_logits(sample)  # bsz, seqlen, vocab
-        cands = th.topk(logits, k=1, dim=-1)
+        cands = th.topk(logits, k=1, dim=-1) # 每个位置选top-1
 
         word_lst_recover = []
         word_lst_ref = []
@@ -197,15 +197,15 @@ def main():
 
         # tokenizer = load_tokenizer(args)
 
-        for seq, input_mask in zip(cands.indices, input_ids_mask_ori):
+        for seq, input_mask in zip(cands.indices, input_ids_mask_ori): # 修复后的answer
             len_x = args.seq_len - sum(input_mask).tolist()
-            tokens = tokenizer.decode_token(seq[len_x:])
+            tokens = tokenizer.decode_token(seq[len_x:]) # id->world
             word_lst_recover.append(tokens)
 
         for seq, input_mask in zip(input_ids_x, input_ids_mask_ori):
             # tokens = tokenizer.decode_token(seq)
             len_x = args.seq_len - sum(input_mask).tolist()
-            word_lst_source.append(tokenizer.decode_token(seq[:len_x]))
+            word_lst_source.append(tokenizer.decode_token(seq[:len_x])) # 修复的ques
             word_lst_ref.append(tokenizer.decode_token(seq[len_x:]))
 
         for i in range(world_size):
