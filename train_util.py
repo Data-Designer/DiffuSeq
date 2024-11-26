@@ -180,7 +180,7 @@ class TrainLoop:
                 logger.dumpkvs()
             if self.eval_data is not None and self.step % self.eval_interval == 0:
                 batch_eval, cond_eval = next(self.eval_data)
-                self.forward_only(batch_eval, cond_eval)
+                self.forward_only(batch_eval, cond_eval) # y, x
                 print('eval on validation set')
                 logger.dumpkvs()
             if self.step > 0 and self.step % self.save_interval == 0:
@@ -213,7 +213,7 @@ class TrainLoop:
                 last_batch = (i + self.microbatch) >= batch.shape[0]
                 t, weights = self.schedule_sampler.sample(micro.shape[0], dist_util.dev())
                 # print(micro_cond.keys())
-                compute_losses = functools.partial(
+                compute_losses = functools.partial( # 也同样计算loss
                     self.diffusion.training_losses,
                     self.ddp_model,
                     micro,
