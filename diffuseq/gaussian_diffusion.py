@@ -123,7 +123,7 @@ class GaussianDiffusion:
 
     :param betas: a 1-D numpy array of betas for each diffusion timestep,
                   starting at T and going to 1.
-    :param predict_xstart: the model outputs to predict x_0, else to predict eps.
+    :param predict_xstart: the model outputs to predict x_0, else to predict eps. （这个很重要）
     :param learn_sigmas: the model outputs to predict sigma or not. Default: False
     :param rescale_learned_sigmas, sigma_small: details setting of learned sigmas
     :param rescale_timesteps: if True, pass floating point timesteps into the
@@ -540,10 +540,10 @@ class GaussianDiffusion:
         assert noise.shape == x_start_mean.shape
         # print(x_start_mean.device, noise.device)
         return (
-             x_start_mean + std * noise
+             x_start_mean + std * noise # 正太分布随机才一个噪声。
         )
 
-    def _token_discrete_loss(self, x_t, get_logits, input_ids, mask=None, truncate=False, t=None):
+    def _token_discrete_loss(self, x_t, get_logits, input_ids, mask=None, truncate=False, t=None): # truncation没有。t都没有什么用。
         '''
         the loss of -log p(w|z_0)
         :param x_start_mean: word embedding
@@ -605,7 +605,7 @@ class GaussianDiffusion:
                                    x_start_mean.shape)
         # print(std.shape, )
         # x_start_log_var = 2 * th.log(std)
-        x_start = self._get_x_start(x_start_mean, std)
+        x_start = self._get_x_start(x_start_mean, std) # 反正是加上了一个随机噪声，使其变得更为稳健。类似于denoise AE
         # print(x_start_mean.shape, x_start.shape)
         if noise is None:
             noise = th.randn_like(x_start)
@@ -619,19 +619,19 @@ class GaussianDiffusion:
         target = x_start
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
         assert model_output.shape == target.shape == x_start.shape
-        terms["mse"] = mean_flat((target - model_output) ** 2) # 正常的mse损失
+        terms["mse"] = mean_flat((target - model_output) ** 2) # 正常的mse损失 (x0和output之间的mse) 这里我有
 
         model_out_x_start = self._x0_helper(model_output, x_t, t)['pred_xstart'] # predicted_xstart = model_output，是不是算token loss?
-        t0_mask = (t == 0)
-        t0_loss = mean_flat((x_start_mean - model_out_x_start) ** 2)
-        terms["mse"] = th.where(t0_mask, t0_loss, terms["mse"]) # 这里是别的用mse，mask掉的部分用token loss
+        t0_mask = (t == 0) # 把为0的mask掉，除了噪声项
+        t0_loss = mean_flat((x_start_mean - model_out_x_start) ** 2) # 只算均值？
+        terms["mse"] = th.where(t0_mask, t0_loss, terms["mse"]) # 这里是别的用mse，mask掉的部分用token loss; z这里的含义是mask掉的地方采用token loss, 其余部分选择error loss. 都是err
 
         # tT_mask = (t == self.num_timesteps - 1)
         out_mean, _, _ = self.q_mean_variance(x_start, th.LongTensor([self.num_timesteps - 1]).to(x_start.device)) # 除了最后一步，每一步都要接近
-        tT_loss =  mean_flat(out_mean ** 2)
+        tT_loss =  mean_flat(out_mean ** 2) # 这里是选择性增强，每一步都要接近。 # 不对啊，为什么要mean最小？就是整体的变化很小是吧。xs,我们也可以加上。
 
-        decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x) # embedding regularization， 最后的embedding映射关系
-        terms["nll"] = self._token_discrete_loss(model_out_x_start, get_logits, input_ids_x, mask=input_ids_mask, truncate=True, t=t) # x_0->model_out_x_start
+        decoder_nll = self._token_discrete_loss(x_start, get_logits, input_ids_x) # embedding regularization， 最后的embedding映射关系； 全部都要token loss
+        terms["nll"] = self._token_discrete_loss(model_out_x_start, get_logits, input_ids_x, mask=input_ids_mask, truncate=True, t=t) # x_0->model_out_x_start; 加强token loss
         # assert (model.lm_head.weight == model.word_embedding.weight).all()
 
         terms["loss"] = terms["mse"] + decoder_nll + tT_loss
