@@ -566,7 +566,7 @@ class GaussianDiffusion:
 
     def _x0_helper(self, model_output, x, t):
         # 两种，一种预测x本身，一种预测error
-        if self.predict_xstart:
+        if self.predict_xstart: # 这里就是True,不就是output本身么
             pred_xstart = model_output
             pred_prev, _, _ = self.q_posterior_mean_variance(
                 x_start=pred_xstart, x_t=x, t=t
